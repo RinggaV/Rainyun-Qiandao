@@ -20,6 +20,9 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.wait import WebDriverWait
 
 COOKIE_FILE = "cookies.json"
+# 积分兑换人民币比例 (2000积分 = 1元)
+POINTS_TO_CNY_RATE = 2000
+
 try:
     from notify import send
 
@@ -160,7 +163,7 @@ def download_image(url, filename):
 
 
 def get_url_from_style(style):
-    return re.search(r'url\(["\']?(.*?)["\']?\)', style).group(1)
+    return re.search(r'url\([\"\'\ ]?(.*?)[\"\'\ ]?\)', style).group(1)
 
 
 def get_width_from_style(style):
@@ -300,7 +303,10 @@ def compute_similarity(img1_path, img2_path):
     return similarity, len(good)
 
 
-if __name__ == "__main__":
+def run():
+    # 声明全局变量以供其他函数使用
+    global driver, wait, ocr, det, debug, linux
+
     try:
         # 从环境变量读取配置
         timeout = int(os.environ.get("TIMEOUT", "15"))
@@ -313,8 +319,8 @@ if __name__ == "__main__":
 
         # 检查必要配置
         if not user or not pwd:
-            print("错误: 请设置 RAINYUN_USER 和 RAINYUN_PWD 环境变量")
-            exit(1)
+            logger.error("请设置 RAINYUN_USER 和 RAINYUN_PWD 环境变量")
+            return
 
         # 以下为代码执行区域，请勿修改！
 
@@ -323,6 +329,7 @@ if __name__ == "__main__":
         logger.info(f"雨云签到工具 v{ver} by SerendipityR ~")
         logger.info("Github发布页: https://github.com/SerendipityR-2022/Rainyun-Qiandao")
         logger.info("------------------------------------------------------------------")
+
         delay = random.randint(0, max_delay)
         delay_sec = random.randint(0, 60)
         if not debug:
@@ -351,21 +358,20 @@ if __name__ == "__main__":
             logged_in = do_login(driver, wait, user, pwd)
 
         if not logged_in:
-            logger.error("登录失败，退出程序")
-            driver.quit()
-            exit(1)
+            logger.error("登录失败，任务终止")
+            return
 
         logger.info("正在转到赚取积分页")
         driver.get("https://app.rainyun.com/account/reward/earn")
-        driver.implicitly_wait(5)
 
         # 检查签到状态：先找"领取奖励"按钮，找不到就检查是否已签到
         try:
-            earn = driver.find_element(By.XPATH,
-                                       "//span[contains(text(), '每日签到')]/ancestor::div[1]//a[contains(text(), '领取奖励')]")
+            # 使用显示等待寻找按钮
+            earn = wait.until(EC.presence_of_element_located((By.XPATH,
+                                       "//span[contains(text(), '每日签到')]/ancestor::div[1]//a[contains(text(), '领取奖励')]")))
             logger.info("点击赚取积分")
             earn.click()
-        except Exception:
+        except TimeoutException:
             # 检查是否已经签到（按钮可能显示"已领取"、"已完成"等）
             already_signed_patterns = ['已领取', '已完成', '已签到', '明日再来']
             page_source = driver.page_source
@@ -374,13 +380,13 @@ if __name__ == "__main__":
                     logger.info(f"今日已签到（检测到：{pattern}），跳过签到流程")
                     # 直接跳到获取积分信息
                     try:
-                        points_raw = driver.find_element(By.XPATH,
-                            '//*[@id="app"]/div[1]/div[3]/div[2]/div/div/div[2]/div[1]/div[1]/div/p/div/h3').get_attribute("textContent")
+                        points_raw = wait.until(EC.visibility_of_element_located((By.XPATH,
+                            '//*[@id="app"]/div[1]/div[3]/div[2]/div/div/div[2]/div[1]/div[1]/div/p/div/h3'))).get_attribute("textContent")
                         current_points = int(''.join(re.findall(r'\d+', points_raw)))
-                        logger.info(f"当前剩余积分: {current_points} | 约为 {current_points / 2000:.2f} 元")
+                        logger.info(f"当前剩余积分: {current_points} | 约为 {current_points / POINTS_TO_CNY_RATE:.2f} 元")
                     except Exception:
                         logger.info("无法获取当前积分信息")
-                    exit(0)
+                    return
             # 如果既没找到领取按钮，也没检测到已签到，说明页面结构可能变了
             raise Exception("未找到签到按钮，且未检测到已签到状态，可能页面结构已变更")
         logger.info("处理验证码")
@@ -388,12 +394,11 @@ if __name__ == "__main__":
         if not process_captcha():
             raise Exception("验证码识别重试次数过多，签到失败")
         driver.switch_to.default_content()
-        driver.implicitly_wait(5)
-        points_raw = driver.find_element(By.XPATH,
-                                         '//*[@id="app"]/div[1]/div[3]/div[2]/div/div/div[2]/div[1]/div[1]/div/p/div/h3').get_attribute(
+        points_raw = wait.until(EC.visibility_of_element_located((By.XPATH,
+                                         '//*[@id="app"]/div[1]/div[3]/div[2]/div/div/div[2]/div[1]/div[1]/div/p/div/h3'))).get_attribute(
             "textContent")
         current_points = int(''.join(re.findall(r'\d+', points_raw)))
-        logger.info(f"当前剩余积分: {current_points} | 约为 {current_points / 2000:.2f} 元")
+        logger.info(f"当前剩余积分: {current_points} | 约为 {current_points / POINTS_TO_CNY_RATE:.2f} 元")
         logger.info("任务执行成功！")
     except Exception as e:
         logger.error(f"脚本执行异常终止: {e}")
@@ -412,8 +417,11 @@ if __name__ == "__main__":
 
         # 3. 发送通知
         logger.info("正在发送通知...")
-        send("雨云签到",log_content)
+        send("雨云签到", log_content)
 
         # 4. 释放内存
         log_capture_string.close()
 
+
+if __name__ == "__main__":
+    run()

@@ -16,6 +16,11 @@ from email.utils import formataddr
 
 import requests
 
+import logging
+
+# 配置 logger
+logger = logging.getLogger(__name__)
+
 # 原先的 print 函数和主线程的锁
 _print = print
 mutex = threading.Lock()
@@ -1119,7 +1124,7 @@ def send(title: str, content: str, ignore_default_config: bool = False, **kwargs
         try:
             func(title, content)
         except Exception as e:
-            print(f"{func.__name__} 推送异常: {e}")
+            logger.error(f"{func.__name__} 推送异常: {e}")
 
     ts = [
         threading.Thread(target=safe_run, args=(mode, title, content), name=mode.__name__)
