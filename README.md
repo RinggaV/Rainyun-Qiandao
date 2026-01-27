@@ -71,6 +71,7 @@ docker-compose up --build
 | COOKIE_FILE | ❌ | cookies.json | 登录 Cookie 存储文件 |
 | POINTS_TO_CNY_RATE | ❌ | 2000 | 积分兑换比例 |
 | CAPTCHA_RETRY_LIMIT | ❌ | 5 | 验证码最大重试次数 |
+| CAPTCHA_RETRY_UNLIMITED | ❌ | false | 验证码无限重试（直到成功） |
 | DOWNLOAD_TIMEOUT | ❌ | 10 | 图片下载超时(秒) |
 | DOWNLOAD_MAX_RETRIES | ❌ | 3 | 图片下载最大重试次数 |
 | DOWNLOAD_RETRY_DELAY | ❌ | 2 | 图片下载重试间隔(秒) |
