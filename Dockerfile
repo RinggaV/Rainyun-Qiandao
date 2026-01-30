@@ -29,13 +29,24 @@ RUN apt-get update && apt-get install -y \
     libgl1 \
     libgbm1 \
     libasound2t64 \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # 安装 supercronic（容器定时任务调度器）
-# 使用本地预编译的二进制文件，避免构建时依赖 GitHub
+# 从 GitHub Releases 下载指定版本，避免本地二进制版本坑
 ARG TARGETARCH
-COPY bin/supercronic-linux-${TARGETARCH} /usr/local/bin/supercronic
-RUN chmod +x /usr/local/bin/supercronic
+ARG SUPERCRONIC_VERSION=v0.2.32
+
+RUN set -eux; \
+  case "${TARGETARCH}" in \
+    amd64)  SC_BIN="supercronic-linux-amd64" ;; \
+    arm64)  SC_BIN="supercronic-linux-arm64" ;; \
+    arm)    SC_BIN="supercronic-linux-arm" ;; \
+    *) echo "unsupported arch: ${TARGETARCH}" >&2; exit 1 ;; \
+  esac; \
+  curl -fsSL -o /usr/local/bin/supercronic "https://github.com/aptible/supercronic/releases/download/${SUPERCRONIC_VERSION}/${SC_BIN}"; \
+  chmod +x /usr/local/bin/supercronic; \
+  /usr/local/bin/supercronic -version || true
 
 WORKDIR /app
 
@@ -53,6 +64,10 @@ COPY stealth.min.js .
 COPY api_client.py .
 COPY server_manager.py .
 COPY entrypoint.sh .
+
+# 确保 python 命令存在（部分环境只带 python3）
+RUN ln -sf /usr/local/bin/python3 /usr/local/bin/python
+
 # 转换 Windows 换行符为 Unix 格式，并设置执行权限
 RUN sed -i 's/\r$//' /app/entrypoint.sh && chmod +x /app/entrypoint.sh
 
@@ -62,18 +77,23 @@ ENV RAINYUN_PWD=""
 ENV TIMEOUT=15
 ENV MAX_DELAY=90
 ENV DEBUG=false
+
 # Chrome 低内存模式（适用于 1核1G 小鸡）
 ENV CHROME_LOW_MEMORY=false
+
 # 服务器管理功能（可选）
 ENV RAINYUN_API_KEY=""
 ENV AUTO_RENEW=true
 ENV RENEW_THRESHOLD_DAYS=7
 ENV RENEW_PRODUCT_IDS=""
+
 # 推送服务（示例）
 ENV PUSH_KEY=""
+
 # 定时模式配置
 ENV CRON_MODE=false
 ENV CRON_SCHEDULE="0 8 * * *"
+
 # Chromium 路径（Debian 系统）
 ENV CHROME_BIN=/usr/bin/chromium
 ENV CHROMEDRIVER_PATH=/usr/bin/chromedriver
